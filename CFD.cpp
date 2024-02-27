@@ -34,7 +34,7 @@ int main(){
     double dx = Lx/Nx;
     double dy = Ly/Ny;
 
-    // 同年生係数をレイノルズ数から計算
+    // 動粘性係数をレイノルズ数から計算
     double nu = U*Lx/Re;
 
     // 現在の時間tと時間発展
@@ -43,7 +43,9 @@ int main(){
         //step1：流速の予測値の計算
         for(int i = 1; i <= Nx − 1; ++i){// upの計算
             for(int j = 0; j <= Ny - 1; ++j){
-
+                
+                double uw = (u[i−1][j]+u[i][j])/2.; 
+                double ue = (u[i][j]+u[i][j+1])/2.;
             }
         }
         for(int i = 0; i <= Nx - 1; ++i){// vpの計算
