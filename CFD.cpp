@@ -1,5 +1,10 @@
 #include <iostream>
 #include <string>
+
+#ifdef DEBUG 
+#include <cmath> 
+#endif
+
 using namespace std;
 
 // 計算空間のサイズと天井の速度 
@@ -31,6 +36,47 @@ double M[ Ncells ][ Ncells ];
 // 右辺ベクトルを格納する配列.線型方程式を解き終わった時には，根が格納される. 
 double b[Ncells];
 
+
+// 線型方程式を解くための関数
+// AをLU分解して，そのままAに入れる.ピボット選択はしていない.
+void LU_decomp(double A[][Ncells]) {
+    for (int k = 0; k < Ncells - 1; ++k) {
+        double w = 1./A[k][k];
+        for (int i = k+1; i < Ncells; ++i) {
+            A[i][k] *= w;
+            for (int j = k+1; j < Ncells; ++j){
+                A[i][j] -= A[i][k]*A[k][j]; 
+            }
+        }
+    }
+}
+
+//線型方程式LU*x=bを解いて，根をbに格納する.
+void LU_solve(double const LU[][Ncells], double b[]) {
+    // LUはLU分解済みの係数行列
+    for (int k = 1; k < Ncells; ++k){
+        for (int i = 0; i < k; ++i){
+            b[k] -=LU[k][i]*b[i];
+        }
+    }
+    for (int k = Ncells-1; k >= 0; --k){
+        for (int i = k+1; i < Ncells; ++i){
+            b[k] -=LU[k][i]*b[i];
+        }
+        b[k] /= LU[k][k];
+    }
+}
+#ifdef DEBUG
+// 行列・ベクトル積 b = A*x
+void Matvec(double const A[][Ncells], double const x[], double b[]) {
+    for (int i = 0; i < Ncells; ++i) { 
+        b[i] = 0.;
+        for (int j = 0; j < Ncells; ++j) 
+            b[i] += A[i][j]*x[j];
+    } 
+}
+#endif // DEBUG
+
 int main(){
     // セルの幅
     double dx = Lx/Nx;
@@ -41,6 +87,45 @@ int main(){
 
     // 現在の時間tと時間発展
     double t = dt;
+
+    // Poisson方程式の係数行列を作る 
+    // Mは0で初期化されている前提
+    for (int i = 0; i <= Nx - 1; ++i)
+        for (int j = 0; j <= Ny - 1; ++j) {
+            int P=i+j*Nx; 
+            int S = i +(j-1)*Nx; 
+            int W=(i-1)+j *Nx; 
+            int E=(i+1)+j *Nx; 
+            int N=i +( j +1)*Nx; 
+            if (j >= 1) {
+                M[P][S] = 1./(dy*dy);
+                M[P][P] -= 1./(dy*dy); 
+                }
+            if (i >= 1) {
+                M[P][W] = 1./(dx*dx); 
+                M[P][P] -= 1./(dx*dx);
+                }
+            if (i <= Nx - 2) {
+                M[P][E] = 1./(dx*dx);
+                M[P][P] -= 1./(dx*dx); 
+            }
+            if (j <= Ny - 2) { 
+                M[P][N] = 1./(dy*dy); 
+                M[P][P] -= 1./(dy*dy);
+            } 
+        }
+    
+
+    #ifdef DEBUG
+    double OrigM[Ncells][Ncells];
+    for (int i = 0; i <= Nx*Ny - 1; ++i)
+        for (int j = 0; j <= Nx*Ny - 1; ++j) 
+            OrigM[i][j] =M[i][j];
+
+    #endif // DEBUG
+
+    LU_decomp(M) ;
+
     while(t <= t_end){
         //step1：流速の予測値の計算
         for(int i = 1; i <= Nx - 1; ++i){// upの計算
@@ -124,8 +209,72 @@ int main(){
             }
         }
         //step2：圧力の修正量の計算
+        for (int i = 0; i <= Nx - 1; ++i)
+            for (int j = 0; j <= Ny - 1; ++j)
+                b[i+j*Nx] = ((-up[i][j]+up[i+1][j])/dx + (-vp[i][j]+vp[i][j+1])/dy ) / dt ;
+        
+        #ifdef DEBUG
+        double RHS[Ncells];
+        for (int i = 0; i < Ncells; ++i)
+            RHS[i] = b[i];
+        #endif // DEBUG
+
+        LU_solve(M, b);
+
+        #ifdef DEBUG
+        // 根のテスト
+        double prod [ Ncells ] ; 
+        Matvec(OrigM, b, prod);
+        double sum_diff = 0 . ;
+        for (int i = 0; i < Ncells; ++i)
+            sum_diff += (RHS[i]-prod[i])*(RHS[i]-prod[i]);
+        std::cerr << "RMS of Diff == " << sqrt(sum_diff / Ncells) << std::endl ;
+        #endif // DEBUG
+
+        for (int i = 0; i <= Nx - 1; ++i) 
+            for (int j = 0; j <= Ny - 1; ++j)
+                phi[i][j] = b[i+j*Nx];
         //step3：圧力と流速の修正
+        for (int i = 0; i <= Nx - 1; ++i) 
+            for (int j = 0; j <= Ny - 1; ++j)
+                p[i][j] += phi[i][j];
+        for (int i = 1; i <= Nx - 1; ++i) 
+            for (int j = 0; j <= Ny - 1; ++j)
+                u[i][j] = up[i][j] - dt*(-phi[i-1][j] + phi[i][j])/dx;
+        for (int i = 0; i <= Nx - 1; ++i) 
+            for (int j = 1; j <= Ny - 1; ++j)
+                v[i][j] = vp[i][j] - dt*(-phi[i][j-1] + phi[i][j])/dy;
+
         //計算結果の出力
+        //P
+        cout << "P" << endl; 
+        for (int i = 0; i <= Nx - 1; ++i)
+            for (int j = 0; j <= Ny - 1; ++j)
+                cout << p[i][j] << endl;
+        //U
+        cout << "U" << endl; 
+        for (int i = 1; i <= Nx - 1; ++i)
+            for (int j = 0; j <= Ny - 1; ++j) 
+                cout << u[i][j] << endl;
+        //V
+        cout << "V" << endl; 
+        for (int i = 0; i <= Nx - 1; ++i)
+            for (int j = 1; j <= Ny - 1; ++j) 
+                cout << v[i][j] << endl;
+
+        #ifdef DEBUG
+        // 連続の式に対する誤差のチェック
+        double sum_voldiff = 0;
+        for (int i = 0; i <= Nx - 1; ++i)
+            for (int j = 0; j <= Ny - 1; ++j) {
+                double voldiff = (u[i][j] - u[i+1][j])*dy + (v[i][j] - v[i][j +1])*dx;
+                sum_voldiff += voldiff * voldiff ; 
+                }
+        cerr<<"RMS error of Continuity: "<<sqrt (sum_voldiff/Ncells)<<endl;
+
+        #endif
+
+        //時間の更新
         t+=dt;
     }
 }
