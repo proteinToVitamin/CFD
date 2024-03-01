@@ -74,6 +74,7 @@ void Matvec(double const A[][Ncells], double const x[], double b[]) {
         for (int j = 0; j < Ncells; ++j) 
             b[i] += A[i][j]*x[j];
     } 
+    cout<<"DEBUG was conducted"<<endl;
 }
 #endif // DEBUG
 
@@ -115,18 +116,20 @@ int main(){
             } 
         }
     
-
-    #ifdef DEBUG
+#ifdef DEBUG
     double OrigM[Ncells][Ncells];
     for (int i = 0; i <= Nx*Ny - 1; ++i)
         for (int j = 0; j <= Nx*Ny - 1; ++j) 
             OrigM[i][j] =M[i][j];
 
-    #endif // DEBUG
+#endif // DEBUG
 
     LU_decomp(M) ;
 
     while(t <= t_end){
+        std::cout << "Time: " << t << std::endl; 
+        std::cerr << "Time: " << t << std::endl;
+
         //step1：流速の予測値の計算
         for(int i = 1; i <= Nx - 1; ++i){// upの計算
             for(int j = 0; j <= Ny - 1; ++j){
@@ -145,21 +148,30 @@ int main(){
                 }
                 if (Ny-1 == j) {
                 un = U;
-                vn = 0.; } 
+                vn = 0.; 
+                } 
                 else {
                 un = 0.5*(u[i][j] + u[i][j+1]);
                 vn = 0.5*(v[i-1][j+1] + v[i][j+1]); 
                 }
                 double uvy = (un*vn-us*vs)/dy;
 
+                // 圧力勾配項
                 double dpdx = (p[i][j] - p[i-1][j])/dx;
 
+                //　粘性項
                 double uxx = (u[i-1][j]-2*u[i][j] + u[i+1][j])/(dx*dx); 
                 double uyy ;
                 if (0 == j){
                     double us = 0.;
                     uyy = (8/3*us - (8/3+4/3)*u[i][j] + 4/3*u[i][j +1])/(dy*dy);
-                            }
+                }else if (Ny - 1 == j) {
+                    double un = U;
+                    uyy = (4./3.*u[ i ][ j -1] - (4./3.+8./3.)*u[ i ][ j ] + 8./3.*un)/(dy*dy);
+                }else{
+                    uyy = (u[i][j-1] - 2*u[i][j] + u[i][j+1])/(dy*dy);
+                }
+                
                 up[i][j] = u[i][j] + dt*(-(uux+uvy) -dpdx + nu*(uxx+uyy));
             }
         }
@@ -213,15 +225,15 @@ int main(){
             for (int j = 0; j <= Ny - 1; ++j)
                 b[i+j*Nx] = ((-up[i][j]+up[i+1][j])/dx + (-vp[i][j]+vp[i][j+1])/dy ) / dt ;
         
-        #ifdef DEBUG
+#ifdef DEBUG
         double RHS[Ncells];
         for (int i = 0; i < Ncells; ++i)
             RHS[i] = b[i];
-        #endif // DEBUG
+#endif // DEBUG
 
         LU_solve(M, b);
 
-        #ifdef DEBUG
+#ifdef DEBUG
         // 根のテスト
         double prod [ Ncells ] ; 
         Matvec(OrigM, b, prod);
@@ -229,7 +241,7 @@ int main(){
         for (int i = 0; i < Ncells; ++i)
             sum_diff += (RHS[i]-prod[i])*(RHS[i]-prod[i]);
         std::cerr << "RMS of Diff == " << sqrt(sum_diff / Ncells) << std::endl ;
-        #endif // DEBUG
+#endif // DEBUG
 
         for (int i = 0; i <= Nx - 1; ++i) 
             for (int j = 0; j <= Ny - 1; ++j)
@@ -262,7 +274,7 @@ int main(){
             for (int j = 1; j <= Ny - 1; ++j) 
                 cout << v[i][j] << endl;
 
-        #ifdef DEBUG
+#ifdef DEBUG
         // 連続の式に対する誤差のチェック
         double sum_voldiff = 0;
         for (int i = 0; i <= Nx - 1; ++i)
@@ -271,8 +283,7 @@ int main(){
                 sum_voldiff += voldiff * voldiff ; 
                 }
         cerr<<"RMS error of Continuity: "<<sqrt (sum_voldiff/Ncells)<<endl;
-
-        #endif
+#endif
 
         //時間の更新
         t+=dt;
