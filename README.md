@@ -1,0 +1,1 @@
+I have created a numerical fluid simulation for cavity flow. The analysis method uses Computational Fluid Dynamics (CFD), and for solving the pressure Poisson equation, I have prepared the LU decomposition method, Gaussian solver, and the Jacobi solver.
